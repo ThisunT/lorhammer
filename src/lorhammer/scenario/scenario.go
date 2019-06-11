@@ -5,7 +5,6 @@ import (
 	"lorhammer/src/model"
 	"lorhammer/src/tools"
 	"time"
-
 	"context"
 
 	"github.com/google/uuid"
@@ -40,6 +39,7 @@ func NewScenario(init model.Init) (*Scenario, error) {
 		}
 		gateways[i] = lora.NewGateway(int(tools.Random64(int64(init.NbNode[0]), int64(init.NbNode[1]))), init)
 	}
+
 	scenarioSleepTimeMin, err := time.ParseDuration(init.ScenarioSleepTime[0])
 	if err != nil {
 		return nil, err
@@ -56,6 +56,7 @@ func NewScenario(init model.Init) (*Scenario, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &Scenario{
 		UUID:                 uuid.New().String(),
 		Gateways:             gateways,
@@ -114,6 +115,7 @@ func (p *Scenario) Join(prometheus metrics.Prometheus) {
 
 func (p *Scenario) start(prometheus metrics.Prometheus, cancelFunction context.CancelFunc) {
 	// all gateways have ended, the scenario is stopped properly by calling the stop method
+
 	if doAllGatewaysHaveEnded(p) {
 		cancelFunction()
 		logger.Info("AllGatewaysHaveEnded")
@@ -125,7 +127,7 @@ func (p *Scenario) start(prometheus metrics.Prometheus, cancelFunction context.C
 	for _, gateway := range p.Gateways {
 		time.Sleep(tools.RandomDuration(p.GatewaySleepTime[0], p.GatewaySleepTime[1]))
 		go gateway.Start(prometheus, p.MessageFcnt)
-		p.MessageFcnt++
+		//p.MessageFcnt++
 	}
 }
 

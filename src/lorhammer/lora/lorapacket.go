@@ -17,12 +17,14 @@ type packet struct {
 	Rxpk []loraserver_structs.RXPK `json:"rxpk,omitempty"`
 }
 
+
 func newRxpk(data []byte, date int64, gateway *LorhammerGateway) loraserver_structs.RXPK {
 
 	rxpk := loraserver_structs.RXPK{
 		Tmst: 123456,
 		Freq: 866.349812,
 		Chan: 2,
+		//Tmms:123456,
 		RFCh: 0,
 		Stat: 1,
 		Modu: "LORA",
@@ -32,6 +34,7 @@ func newRxpk(data []byte, date int64, gateway *LorhammerGateway) loraserver_stru
 		LSNR: 5.1,
 		Size: uint16(len(data)),
 		Data: base64.StdEncoding.EncodeToString(data),
+
 	}
 
 	var compactTime loraserver_structs.CompactTime
@@ -69,10 +72,10 @@ func (p packet) prepare(gateway *LorhammerGateway) ([]byte, error) {
 	return packet, nil
 }
 
-func handlePacket(data []byte) error {
+func handlePacket(data []byte) (bool, error) {
 	pt, err := loraserver_structs.GetPacketType(data)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	switch pt {
@@ -87,11 +90,11 @@ func handlePacket(data []byte) error {
 			"ref":        "lorhammer/lorapacket:HandlePacket()",
 			"packetType": pt,
 		}).Error("gateway: unknown packet type")
-		return nil
+		return false, nil
 	}
 }
 
-func handlePullRespPacket(data []byte) error {
+func handlePullRespPacket(data []byte) (bool, error) {
 
 	logrus.WithFields(logrus.Fields{
 		"ref":  "lorhammer/lorapacket:HandlePacket()",
@@ -101,27 +104,29 @@ func handlePullRespPacket(data []byte) error {
 	var pullRespPacket loraserver_structs.PullRespPacket
 	err := pullRespPacket.UnmarshalBinary(data)
 	if err != nil {
-		return errors.New("Error marshalling ")
+		return false, errors.New("Error marshalling ")
 	}
 
 	payloadBytes, err := base64.StdEncoding.DecodeString(pullRespPacket.Payload.TXPK.Data)
+
+
 	if err != nil {
-		return errors.New("Can't Decode base64 JoinAccept Data")
+		return false, errors.New("Can't Decode base64 JoinAccept Data")
 	}
 	if len(payloadBytes) == 0 {
-		return errors.New("Pull Resp TXPK length must not be null")
+		return false, errors.New("Pull Resp TXPK length must not be null")
 	}
 
-	return nil
+	return true, nil
 
 }
 
-func handlePushAck(data []byte) error {
+func handlePushAck(data []byte) (bool, error) {
 
 	var pushAckPacket loraserver_structs.PushACKPacket
 	err := pushAckPacket.UnmarshalBinary(data)
 	if err != nil {
-		return errors.New("couldn't unmarshall pushAckPacket")
+		return false, errors.New("couldn't unmarshall pushAckPacket")
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -131,16 +136,16 @@ func handlePushAck(data []byte) error {
 		"randomTocken":     pushAckPacket.RandomToken,
 	}).Info("gateway: received udp packet from NS")
 
-	return nil
+	return false, nil
 }
 
-func handlePullAck(data []byte) error {
+func handlePullAck(data []byte) (bool, error) {
 
 	var pullAckPacket loraserver_structs.PullACKPacket
 	err := pullAckPacket.UnmarshalBinary(data)
 
 	if err != nil {
-		return errors.New("couldn't unmarshall pullAckPacket")
+		return false, errors.New("couldn't unmarshall pullAckPacket")
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -150,5 +155,5 @@ func handlePullAck(data []byte) error {
 		"randomTocken":     pullAckPacket.RandomToken,
 	}).Info("gateway: received udp packet from NS")
 
-	return nil
+	return false, nil
 }

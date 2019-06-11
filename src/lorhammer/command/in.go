@@ -8,7 +8,6 @@ import (
 	"os"
 	"sync"
 	"time"
-
 	"github.com/sirupsen/logrus"
 	"lorhammer/src/lorhammer/metrics"
 )

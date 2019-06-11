@@ -1,0 +1,81 @@
+[
+    {
+        "provisioning": {
+            "config": {
+                "password": "admin",
+                "deleteApplication": false,
+                "networkServerAddr": "http://127.0.0.1:1680",
+                "apiUrl": "http://127.0.0.1:8080",
+                "nbProvisionerParallel": 10,
+                "abp": false,
+                "login": "admin",
+                "deleteOrganization": false
+            },
+            "type": "lorawan_server"
+        },
+        "deploy": {
+            "type": "none"
+        },
+        "maxWaitLorhammerTime": "10s",
+        "sleepAtEndTime": "0",
+        "requieredLorhammer": 1,
+        "test": {
+            "repeatTime": "0",
+            "type": "oneShot"
+        },
+        "sleepBeforeCheckTime": "0",
+        "stopAllLorhammerTime": "3m",
+        "check": {
+            "config": {
+                "address": "http://127.0.0.1:9090",
+                "checks": [
+                    {
+                        "resultMin": 1,
+                        "resultMax": 1,
+                        "description": "nb lorhammer",
+                        "query": "count(lorhammer_durations_count)"
+                    },
+                    {
+                        "resultMin": 1,
+                        "resultMax": 1,
+                        "description": "nb gateways",
+                        "query": "sum(lorhammer_gateway)"
+                    },
+                    {
+                        "resultMin": 5,
+                        "resultMax": 5,
+                        "description": "nb nodes",
+                        "query": "sum(lorhammer_node)"
+                    }
+                ]
+            },
+            "type": "prometheus"
+        },
+        "shutdownAllLorhammerTime": "3m",
+        "init": [
+            {
+                "withJoin": true,
+                "gatewaySleepTime": [
+                    "100ms",
+                    "500ms"
+                ],
+                "nbNodePerGateway": [
+                    3,
+                    3
+                ],
+                "nwskey": "",
+                "payloads": [{"value": "7b202274656d706572617475726522203a2032322c202268756d696469747922203a2035362c2022706d322e3522203a20322c2022706d313022203a203130207d"}],
+                "nbGatewayPerLorhammer": 2,
+                "scenarioSleepTime": [
+                    "3s",
+                    "3s"
+                ],
+                "receiveTimeoutTime": "4s",
+                "randomPayloads": false,
+                "appskey": "",
+                "nsAddress": "127.0.0.1:1680",
+                "nbScenarioReplayLaps": 0
+            }
+        ]
+    }
+]

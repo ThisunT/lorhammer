@@ -1,58 +1,80 @@
-[{
-  "test": {
-    "type": "oneShot",
-    "repeatTime": "0"
-  },
-  "stopAllLorhammerTime": "3m",
-  "sleepBeforeCheckTime": "0",
-  "shutdownAllLorhammerTime": "6m",
-  "sleepAtEndTime": "0",
-  "requieredLorhammer": 1,
-  "maxWaitLorhammerTime": "10s",
-  "init": [{
-    "nsAddress": "127.0.0.1:1700",
-    "nbGatewayPerLorhammer": 5,
-    "nbNodePerGateway": [10, 10],
-    "nbScenarioReplayLaps": 0,
-    "scenarioSleepTime": ["3s", "3s"],
-    "receiveTimeoutTime": "2s",
-    "gatewaySleepTime": ["100ms", "500ms"],
-    "withJoin" : true,
-    "appskey" : "93a4841d7203287d0929ad56bde3d7a8",
-    "nwskey" : "d7e6611c4572fc0d331d7d388cace84a",
-    "payloads" : []
-  }],
-  "provisioning": {
-    "type": "loraserver",
-    "config": {
-      "apiUrl": "https://127.0.0.1:9999",
-      "abp" : false,
-      "login": "admin",
-      "password": "admin",
-      "networkServerAddr": "loraserver:8000",
-      "nbProvisionerParallel": 10,
-      "deleteOrganization": false,
-      "deleteApplication": false
+[
+    {
+        "check": {
+            "type": "prometheus",
+            "config": {
+                "checks": [
+                    {
+                        "query": "count(lorhammer_durations_count)",
+                        "resultMin": 1,
+                        "description": "nb lorhammer",
+                        "resultMax": 1
+                    },
+                    {
+                        "query": "sum(lorhammer_gateway)",
+                        "resultMin": 5,
+                        "description": "nb gateways",
+                        "resultMax": 5
+                    },
+                    {
+                        "query": "sum(lorhammer_node)",
+                        "resultMin": 50,
+                        "description": "nb nodes",
+                        "resultMax": 50
+                    }
+                ],
+                "address": "http://127.0.0.1:9090"
+            }
+        },
+        "provisioning": {
+            "type": "loraserver",
+            "config": {
+                "networkServerAddr": "localhost:8000",
+                "password": "admin",
+                "deleteApplication": false,
+                "abp": true,
+                "deleteOrganization": false,
+                "login": "admin",
+                "nbProvisionerParallel": 10,
+                "apiUrl": "http://127.0.0.1:8090"
+            }
+        },
+        "init": [
+            {
+                "receiveTimeoutTime": "2s",
+                "withJoin": false,
+                "nbNodePerGateway": [
+                    10,
+                    10
+                ],
+                "scenarioSleepTime": [
+                    "2s",
+                    "2s"
+                ],
+                "appskey": "93a4841d7203287d0929ad56bde3d7a8",
+                "nsAddress": "127.0.0.1:1700",
+                "nwskey": "d7e6611c4572fc0d331d7d388cace84a",
+                "nbScenarioReplayLaps": 0,
+                "nbGatewayPerLorhammer": 3,
+                "payloads": [],
+                "gatewaySleepTime": [
+                    "100ms",
+                    "500ms"
+                ]
+            }
+        ],
+        "sleepAtEndTime": "0",
+        "deploy": {
+            "type": "none"
+        },
+        "stopAllLorhammerTime": "20m",
+        "test": {
+            "type": "oneShot",
+            "repeatTime": "0"
+        },
+        "maxWaitLorhammerTime": "10s",
+        "sleepBeforeCheckTime": "0",
+        "shutdownAllLorhammerTime": "20m",
+        "requieredLorhammer": 1
     }
-  },
-  "check": {
-    "type": "prometheus",
-    "config": {
-      "address": "http://127.0.0.1:9090",
-      "checks": [
-        {"query": "count(lorhammer_durations_count)", "resultMin": 1, "resultMax": 1, "description": "nb lorhammer"},
-        {"query": "sum(lorhammer_gateway)", "resultMin": 5, "resultMax": 5, "description": "nb gateways"},
-        {"query": "sum(lorhammer_node)", "resultMin": 50, "resultMax": 50, "description": "nb nodes"}
-      ]
-    }
-  },
-  "deploy": {
-    "type": "local",
-    "config": {
-      "pathFile": "./build/lorhammer",
-      "cleanPreviousInstances": true,
-      "nbInstanceToLaunch": 1,
-      "port": 1234
-    }
-  }
-}]
+]

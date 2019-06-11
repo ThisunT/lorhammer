@@ -6,14 +6,17 @@ import (
 	"math"
 	"net"
 	"time"
-
+	"fmt"
 	loraserver_structs "github.com/brocaar/lora-gateway-bridge/gateway"
 	"github.com/brocaar/lorawan"
 	"github.com/sirupsen/logrus"
 	"lorhammer/src/lorhammer/metrics"
+	"encoding/base64"
 )
 
 var loggerGateway = logrus.WithField("logger", "lorhammer/lora/gateway")
+var incomingJoinResponses bool = false
+var nodeCount = 0
 
 //LorhammerGateway : internal gateway for pointer receiver usage
 type LorhammerGateway struct {
@@ -63,26 +66,18 @@ func (gateway *LorhammerGateway) Join(prometheus metrics.Prometheus, withJoin bo
 	 ** We send pull Data for the gateway to be recognized by the NS
 	 ** when sending JoinRequest or any other type of packet
 	 **/
+
 	gateway.sendPullData(conn)
 
 	if withJoin {
-		gateway.sendJoinRequestPackets(conn)
+		gateway.sendJoinRequestPackets(conn, prometheus, withJoin, endPushAckTimer, endPullRespTimer)
 	}
-
-	threadListenUDP := make(chan []byte, 1)
-	defer close(threadListenUDP)
-	next := make(chan bool, 1)
-	defer close(next)
-	poison := make(chan bool, 1)
-	defer close(poison)
-
-	go gateway.readPackets(conn, poison, next, threadListenUDP)
-	gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
 	return nil
 }
 
 //Start send push data packet and listen for ack
 func (gateway *LorhammerGateway) Start(prometheus metrics.Prometheus, fcnt uint32) error {
+
 	conn, err := net.Dial("udp", gateway.NsAddress)
 	if err != nil {
 		return err
@@ -129,8 +124,10 @@ func (gateway *LorhammerGateway) sendPullData(conn net.Conn) {
 	}
 }
 
-func (gateway *LorhammerGateway) sendJoinRequestPackets(conn net.Conn) {
+func (gateway *LorhammerGateway) sendJoinRequestPackets(conn net.Conn, prometheus metrics.Prometheus, withJoin bool, endPushAckTimer func(), endPullRespTimer func()) {
 	loggerGateway.Info("Sending JoinRequest messages for all the nodes")
+
+	nodeCount = 0
 
 	for _, node := range gateway.Nodes {
 		if !node.JoinedNetwork {
@@ -146,6 +143,20 @@ func (gateway *LorhammerGateway) sendJoinRequestPackets(conn net.Conn) {
 			if _, err = conn.Write(packet); err != nil {
 				loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
 			}
+
+			incomingJoinResponses = true
+
+			threadListenUDP := make(chan []byte, 1)
+			defer close(threadListenUDP)
+			next := make(chan bool, 1)
+			defer close(next)
+			poison := make(chan bool, 1)
+			defer close(poison)
+
+			go gateway.readPackets(conn, poison, next, threadListenUDP)
+			gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
+
+			incomingJoinResponses = false
 		}
 	}
 }
@@ -153,16 +164,15 @@ func (gateway *LorhammerGateway) sendJoinRequestPackets(conn net.Conn) {
 func (gateway *LorhammerGateway) sendPushPackets(conn net.Conn, fcnt uint32) {
 	for _, node := range gateway.Nodes {
 		if node.PayloadsReplayLap < gateway.PayloadsReplayMaxLaps || gateway.PayloadsReplayMaxLaps == 0 {
-			buf, date, err := GetPushDataPayload(node, fcnt)
+			buf, date, err := GetPushDataPayload(node, fcnt)  //node.go
 			if err != nil {
 				loggerGateway.WithError(err).Error("Can't get next lora packet to send")
 			}
 			packet, err := packet{
 				Rxpk: []loraserver_structs.RXPK{
-					newRxpk(buf, date, gateway),
+					newRxpk(buf, date, gateway), //lorapacket.go
 				},
 			}.prepare(gateway)
-
 			if err != nil {
 				loggerGateway.WithError(err).Error("Can't prepare lora packet in sendPushPackets")
 			}
@@ -259,7 +269,45 @@ func (gateway *LorhammerGateway) readLoraPackets(conn net.Conn, poison chan bool
 				quit = true
 				break
 			case res := <-threadListenUDP:
-				err := handlePacket(res)
+				resp, err := handlePacket(res)
+				if (resp && incomingJoinResponses){ //To make sure its a response and a response for a join request
+
+					var pullRespPacket loraserver_structs.PullRespPacket
+					err := pullRespPacket.UnmarshalBinary(res)
+					if err != nil {
+						loggerGateway.WithError(err).Error("Error phy unmarshalling")
+					}
+
+					payloadBytes, err := base64.StdEncoding.DecodeString(pullRespPacket.Payload.TXPK.Data)
+
+					phyPayload := lorawan.PHYPayload{MACPayload: &lorawan.JoinAcceptPayload{}}
+
+					err = phyPayload.UnmarshalBinary(payloadBytes)
+					if err != nil {
+						loggerGateway.WithError(err).Error("Error phy payload unmarshalling")
+					}
+
+					err = phyPayload.DecryptJoinAcceptPayload(gateway.Nodes[nodeCount].AppKey)
+					if err != nil {
+						loggerGateway.WithError(err).Error("Error decrypting join accept payload")
+					}
+
+					joinAcceptPayload, ok := phyPayload.MACPayload.(*lorawan.JoinAcceptPayload)
+
+					ok, err = phyPayload.ValidateMIC(gateway.Nodes[nodeCount].AppKey)
+
+					fmt.Println("Join response MIC validation: ", ok)
+
+					newAppSKey := lorawan.DeriveAppSKey(gateway.Nodes[nodeCount].AppKey, joinAcceptPayload.AppNonce, joinAcceptPayload.NetID, gateway.Nodes[nodeCount].DevNonce)
+
+					newNwSKey := lorawan.DeriveNwkSKey(gateway.Nodes[nodeCount].AppKey, joinAcceptPayload.AppNonce, joinAcceptPayload.NetID, gateway.Nodes[nodeCount].DevNonce)
+
+					gateway.Nodes[nodeCount].DevAddr = joinAcceptPayload.DevAddr //As device address generated in the server is not as same as device address made by lorhammer, replace it
+					gateway.Nodes[nodeCount].AppSKey = newAppSKey
+					gateway.Nodes[nodeCount].NwSKey = newNwSKey
+
+					nodeCount = nodeCount + 1
+				}
 				if err != nil {
 					loggerGateway.WithError(err).Error("Can't handle packet")
 				} else if packetType, err := loraserver_structs.GetPacketType(res); err != nil {
@@ -298,12 +346,10 @@ func (gateway *LorhammerGateway) readLoraPackets(conn net.Conn, poison chan bool
 }
 
 func (gateway *LorhammerGateway) isGatewayScenarioCompleted() bool {
-	//infinite case when PayloadsReplayMaxRound is set to 0 or inferior
 	if gateway.PayloadsReplayMaxLaps <= 0 {
 		return false
 	}
 	for _, node := range gateway.Nodes {
-		// if only one node has not reached the expected number of rounds, break the loop and return false
 		if node.PayloadsReplayLap < gateway.PayloadsReplayMaxLaps {
 			loggerGateway.WithFields(logrus.Fields{
 				"DevEui":                node.DevEUI.String(),
@@ -345,7 +391,6 @@ func (gateway *LorhammerGateway) sendTxAckPacket(conn net.Conn, data []byte) {
 	}
 }
 
-//ConvertToGateway : convert internal gateway to model gateway
 func (gateway LorhammerGateway) ConvertToGateway() model.Gateway {
 	return model.Gateway{
 		Nodes:                 gateway.Nodes,

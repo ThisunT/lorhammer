@@ -14,7 +14,7 @@ import (
 
 //TestSuite describe a test to execute scenarios
 type TestSuite struct {
-	UUID                     string             `json:"uuid"`
+	UUID                     string             `json:"uuid"` //uuid given to a testsuite
 	Test                     testtype.Test      `json:"test"`
 	StopAllLorhammerTime     time.Duration      `json:"stopAllLorhammerTime"`
 	SleepBeforeCheckTime     time.Duration      `json:"sleepBeforeCheckTime"`
@@ -70,6 +70,7 @@ func FromFile(configFile []byte) ([]TestSuite, error) {
 		if err != nil {
 			return nil, err
 		}
+		//copying the contents of the scenario file
 		res[i] = TestSuite{
 			UUID:                     uuid.New().String(),
 			Test:                     test.Test,

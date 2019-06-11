@@ -35,21 +35,23 @@ type mqttImpl struct {
 //NewMqtt return a Mqtt based on mqttAddr (protocol://ip:port) and set clientID with hostname
 func NewMqtt(hostname string, mqttAddr string) (Mqtt, error) {
 	clientID := hostname + "_" + string(RandomBytes(8))
-	return NewMqttBasic(mqttAddr, clientID)
+	return NewMqttBasic(mqttAddr, clientID)  //calls NewMqttBasic and returns the mqtt
 }
 
-//NewMqttBasic return a Mqtt client
+//NewMqttBasic return a Mqtt client and the url
 func NewMqttBasic(url string, clientID string) (Mqtt, error) {
 	// uncomment next line to see all mqtt logs (very verbose)
 	// mqttLib.DEBUG = log.New(os.Stderr, "", log.LstdFlags)
 
+
+  //setting connections options--- the broker, the client and the function to handle while connected and when gets disconnected
 	connOpts := mqttLib.NewClientOptions().AddBroker(url).SetClientID(clientID).SetOnConnectHandler(func(client mqttLib.Client) {
 		logMqtt.WithField("mqtt", url).WithField("ClientID", clientID).Info("Connected to Mqtt broker")
 	}).SetConnectionLostHandler(func(client mqttLib.Client, reason error) {
 		logMqtt.WithError(reason).Warn("Connection mqtt lost")
 	})
 
-	client := mqttLib.NewClient(connOpts)
+	client := mqttLib.NewClient(connOpts)  //creating the new client
 
 	return &mqttImpl{
 		url:    url,
@@ -91,7 +93,7 @@ func (mqtt *mqttImpl) HandleCmd(topics []string, handle func(cmd model.CMD)) err
 		if err := json.Unmarshal(message, &command); err != nil {
 			logMqtt.WithField("msg", string(message)).WithError(err).Warn("Skeep message because can't unMarshalling incoming message")
 		} else {
-			handle(command)
+			handle(command)  //returning commandName to Handle()
 		}
 	})
 }
@@ -107,7 +109,7 @@ func (mqtt *mqttImpl) publishFullCmd(topic string, cmd model.CMD) error {
 		return err
 	}
 	logMqtt.WithField("topic", topic).WithField("cmd", cmd.CmdName).Info("Send mqtt cmd")
-	return mqtt.publish(topic, message)
+	return mqtt.publish(topic, message)  //topic->lorhammer_something, message->commandName
 }
 
 func (mqtt *mqttImpl) PublishCmd(topic string, cmdName model.CommandName) error {
@@ -125,7 +127,7 @@ func (mqtt *mqttImpl) PublishSubCmd(topic string, cmdName model.CommandName, sub
 	}
 	cmd := model.CMD{
 		CmdName: cmdName,
-		Payload: message,
+		Payload: message,  //message->scenariouuid
 	}
 	return mqtt.publishFullCmd(topic, cmd)
 }

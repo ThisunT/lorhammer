@@ -15,24 +15,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var logLoraserver = logrus.WithField("logger", "orchestrator/provisioning/loraserver")
+var logLorawan_server = logrus.WithField("logger", "orchestrator/provisioning/lorawan_server") //logger for lorawan_server
 
 const (
-	loraserverType             = Type("loraserver")
-	loraserverOrganisationName = "lorhammer"
-	loraserverApplicationName  = "Lorhammer"
-	httpLoraserverTimeout      = 1 * time.Minute
+	lorawan_serverType             = Type("lorawan_server")//Meaning??
+	lorawan_serverOrganisationName = "lorhammer"
+	lorawan_serverApplicationName  = "Lorhammer"
+	httpLorawan_serverTimeout      = 1 * time.Minute
 )
 
-type httpClientSender interface {     
+type httpClientSender interface {  //for http requests/response
 	Do(*http.Request) (*http.Response, error)
 }
 
-type loraserver struct {
-	APIURL                string `json:"apiUrl"`
-	Login                 string `json:"login"`
+type lorawan_server struct {
+	APIURL                string `json:"apiUrl"`//required??
+	Login                 string `json:"login"` //applicn server username
 	Password              string `json:"password"`
-	jwtToKen              string
+	jwtToKen              string  //required
 	OrganizationID        string `json:"organizationId"`
 	NetworkServerID       string `json:"networkServerId"`
 	NetworkServerAddr     string `json:"networkServerAddr"`
@@ -47,68 +47,78 @@ type loraserver struct {
 	httpClient httpClientSender
 }
 
-func newLoraserver(rawConfig json.RawMessage) (provisioner, error) {
-	config := &loraserver{
+//gets rawConfig json and returns the config
+func newLorawan_server(rawConfig json.RawMessage) (provisioner, error) {
+	config := &lorawan_server{  //reference struct of lorawan_server defined above
 		httpClient: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				Dial: (&net.Dialer{
-					Timeout: httpLoraserverTimeout,
+					Timeout: httpLorawan_serverTimeout,
 				}).Dial,
-				TLSHandshakeTimeout: httpLoraserverTimeout,
+				TLSHandshakeTimeout: httpLorawan_serverTimeout,
 			},
-			Timeout: httpLoraserverTimeout,
+			Timeout: httpLorawan_serverTimeout,
 		},
 	}
 	if err := json.Unmarshal(rawConfig, config); err != nil {
 		return nil, err
 	}
 
-	return config, nil
-}
+	return config, nil //contains info from the json into structure config
+}//only has httpClient value, rest are not initialized
 
-func (loraserver *loraserver) Provision(sensorsToRegister model.Register) error {
-	if loraserver.jwtToKen == "" {
+
+func (lorawan_server *lorawan_server) Provision(sensorsToRegister model.Register) error {
+   //does our server requires jwtToken??    not required??
+	if lorawan_server.jwtToKen == "" {//for authorization if no jwtToKen received
 		req := struct {
-			Login    string `json:"username"`
-			Password string `json:"password"`
+			Login    string `json:"name"`
+			Password string `json:"pass"`
 		}{
-			Login:    loraserver.Login,
-			Password: loraserver.Password,
+			Login:    lorawan_server.Login,
+			Password: lorawan_server.Password,
 		}
 
 		resp := struct {
 			Jwt string `json:"jwt"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/internal/login", "POST", req, &resp)
+   	//requesting the API and storing the jwtToKen in resp
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/admin", "POST", req, &resp)
 		if err != nil {
 			return err
 		}
 
-		loraserver.jwtToKen = resp.Jwt
+		lorawan_server.jwtToKen = resp.Jwt
 	}
 
-	if err := loraserver.initOrganizationID(); err != nil {
+  //creating organizationId for the server or if empty create new lorhammer organization in loraserver or use define organizationId.
+	if err := lorawan_server.initOrganizationID(); err != nil { //??
 		return err
 	}
 
-	if err := loraserver.initNetworkServer(); err != nil {
+  //gets the networkServerId  or if no network-server is there, then creates network-server and initiates it
+	if err := lorawan_server.initNetworkServer(); err != nil {
 		return err
 	}
 
-	if err := loraserver.initServiceProfile(); err != nil {
+  //gets the serviceProfileID after creating a service
+	if err := lorawan_server.initServiceProfile(); err != nil {
 		return err
 	}
 
-	if err := loraserver.initApplication(); err != nil {
+     //gets the application id or if no application is there, it creates one
+	if err := lorawan_server.initApplication(); err != nil {
 		return err
 	}
 
-	if err := loraserver.initDeviceProfile(); err != nil {
+    //creates a device profile in the server and gets its id
+	if err := lorawan_server.initDeviceProfile(); err != nil {
 		return err
 	}
 
+  //counting the total number of nodes for all the Gateways in nbNodeToProvision
 	nbNodeToProvision := 0
 	for _, gateway := range sensorsToRegister.Gateways {
 		for range gateway.Nodes {
@@ -116,19 +126,21 @@ func (loraserver *loraserver) Provision(sensorsToRegister model.Register) error 
 		}
 	}
 
-	sensorChan := make(chan *model.Node, nbNodeToProvision)
+ //channels for relaying messages in a concurrent manner
+	sensorChan := make(chan *model.Node, nbNodeToProvision) //channel for sharing information for all nodes
 	defer close(sensorChan)
-	poison := make(chan bool, loraserver.NbProvisionerParallel)
+	poison := make(chan bool, lorawan_server.NbProvisionerParallel)//Number of parallel request will access loraserver to provision.
 	defer close(poison)
 	errorChan := make(chan error)
 	defer close(errorChan)
 	sensorFinishChan := make(chan *model.Node)
 	defer close(sensorFinishChan)
 
-	for i := 0; i < loraserver.NbProvisionerParallel; i++ {
-		go loraserver.provisionSensorAsync(sensorChan, poison, errorChan, sensorFinishChan)
+  //concurrently provisioning all the Sensors parallely for NbProvisionerParallel times
+	for i := 0; i < lorawan_server.NbProvisionerParallel; i++ {
+		go lorawan_server.provisionSensorAsync(sensorChan, poison, errorChan, sensorFinishChan)
 	}
-
+  //do
 	go func() {
 		for _, gateway := range sensorsToRegister.Gateways {
 			gateway := gateway
@@ -142,23 +154,25 @@ func (loraserver *loraserver) Provision(sensorsToRegister model.Register) error 
 	for i := 0; i < nbNodeToProvision; i++ {
 		select {
 		case err := <-errorChan:
-			logLoraserver.WithError(err).Error("Node not provisioned")
+			logLorawan_server.WithError(err).Error("Node not provisioned")
 		case sensor := <-sensorFinishChan:
-			logLoraserver.WithField("node", sensor).Debug("Node provisioned")
+			logLorawan_server.WithField("node", sensor).Debug("Node provisioned")
 		}
 	}
 
-	for i := 0; i < loraserver.NbProvisionerParallel; i++ {
+	for i := 0; i < lorawan_server.NbProvisionerParallel; i++ {
 		poison <- true
 	}
 
 	return nil
 }
 
-func (loraserver *loraserver) initOrganizationID() error {
-	if loraserver.OrganizationID == "" {
+//Return the organization id, if there is any organization, otherwise creates an Organization named Lorhammer
+//and fetches its id from the server
+func (lorawan_server *lorawan_server) initOrganizationID() error {
+	if lorawan_server.OrganizationID == "" {
 		// Check if already exist
-		type Organization struct {
+		type Organization struct {  //struct for org id and name
 			ID   string `json:"id"`
 			Name string `json:"name"`
 		}
@@ -167,25 +181,28 @@ func (loraserver *loraserver) initOrganizationID() error {
 			Result []Organization `json:"result"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/organizations?limit=100", "GET", nil, &respExist)
+    //requesting the API to get the organizations id
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/organizations?limit=100", "GET", nil, &respExist)
 		if err != nil {
 			return err
 		}
+
+   //setting up organization id from matching oraganizATION name, if there exists lorahammer organization in server
 		for _, orga := range respExist.Result {
-			if orga.Name == loraserverOrganisationName {
-				loraserver.OrganizationID = orga.ID
+			if orga.Name == lorawan_serverOrganisationName { //if orga.Name matches Lorhammer
+				lorawan_server.OrganizationID = orga.ID
 				break
 			}
 		}
 
-		// Create Organization
-		if loraserver.OrganizationID == "" {
+		// Create Organization   ....if there is no Lorahammer organization
+		if lorawan_server.OrganizationID == "" {
 			req := struct {
 				Organization struct {
 					CanHaveGateways bool   `json:"canHaveGateways"`
 					DisplayName     string `json:"displayName"`
 					Name            string `json:"name"`
-				} `json:"name"`
+				} `json:"name"`    //the Organization struct can be referenced using "name"
 			}{
 				Organization: struct {
 					CanHaveGateways bool   `json:"canHaveGateways"`
@@ -194,7 +211,7 @@ func (loraserver *loraserver) initOrganizationID() error {
 				}{
 					CanHaveGateways: true,
 					DisplayName:     "Lorhammer",
-					Name:            loraserverOrganisationName,
+					Name:            lorawan_serverOrganisationName,
 				},
 			}
 
@@ -202,19 +219,20 @@ func (loraserver *loraserver) initOrganizationID() error {
 				ID string `json:"id"`
 			}{}
 
-			err := loraserver.doRequest(loraserver.APIURL+"/api/organizations", "POST", req, &resp)
+			err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/organizations", "POST", req, &resp)
 			if err != nil {
 				return err
 			}
 
-			loraserver.OrganizationID = resp.ID
+			lorawan_server.OrganizationID = resp.ID
 		}
 	}
 	return nil
 }
 
-func (loraserver *loraserver) initNetworkServer() error {
-	if loraserver.NetworkServerID == "" {
+//gets network-serverid if there is a network server address in the server, else creates one and adds it to the server
+func (lorawan_server *lorawan_server) initNetworkServer() error {
+	if lorawan_server.NetworkServerID == "" {
 		// Check if already exist
 		type NetworkServer struct {
 			ID     string `json:"id"`
@@ -225,18 +243,22 @@ func (loraserver *loraserver) initNetworkServer() error {
 			Result []NetworkServer `json:"result"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/network-servers?limit=100", "GET", nil, &respExist)
+    //requesting the api to get the list of  network server address in the server
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/network-servers?limit=100", "GET", nil, &respExist)
 		if err != nil {
 			return err
 		}
+
+		//getting the id of the n/w server if the response matches with the stored name in the server
 		for _, ns := range respExist.Result {
-			if ns.Server == loraserver.NetworkServerAddr {
-				loraserver.NetworkServerID = ns.ID
+			if ns.Server == lorawan_server.NetworkServerAddr {
+				lorawan_server.NetworkServerID = ns.ID
 				break
 			}
 		}
-		// Create NS
-		if loraserver.NetworkServerID == "" {
+
+		// Create NS...if no network server is there in server, then creating one
+		if lorawan_server.NetworkServerID == "" {
 			req := struct {
 				NetworkServer struct {
 					Server string `json:"server"`
@@ -247,8 +269,8 @@ func (loraserver *loraserver) initNetworkServer() error {
 					Server string `json:"server"`
 					Name   string `json:"name"`
 				}{
-					Server: loraserver.NetworkServerAddr,
-					Name:   loraserver.NetworkServerAddr,
+					Server: lorawan_server.NetworkServerAddr,
+					Name:   lorawan_server.NetworkServerAddr,
 				},
 			}
 
@@ -256,19 +278,20 @@ func (loraserver *loraserver) initNetworkServer() error {
 				ID string `json:"id"`
 			}{}
 
-			err = loraserver.doRequest(loraserver.APIURL+"/api/network-servers", "POST", req, &resp)
+			err = lorawan_server.doRequest(lorawan_server.APIURL+"/api/network-servers", "POST", req, &resp)
 			if err != nil {
 				return err
 			}
 
-			loraserver.NetworkServerID = resp.ID
+			lorawan_server.NetworkServerID = resp.ID
 		}
 	}
 	return nil
 }
 
-func (loraserver *loraserver) initServiceProfile() error {
-	if loraserver.ServiceProfileID == "" {
+//returns the serviceProfileID after creater service Profile
+func (lorawan_server *lorawan_server) initServiceProfile() error {
+	if lorawan_server.ServiceProfileID == "" {
 		req := struct {
 			ServiceProfile struct {
 				Name            string `json:"name"`
@@ -304,8 +327,8 @@ func (loraserver *loraserver) initServiceProfile() error {
 				AddGWMetadata   bool   `json:"addGWMetadata"`
 			}{
 				Name:            "LorhammerServiceProfile",
-				NetworkServerID: loraserver.NetworkServerID,
-				OrganizationID:  loraserver.OrganizationID,
+				NetworkServerID: lorawan_server.NetworkServerID,
+				OrganizationID:  lorawan_server.OrganizationID,
 				AddGWMetadata:   true,
 			},
 		}
@@ -314,18 +337,19 @@ func (loraserver *loraserver) initServiceProfile() error {
 			ID string `json:"id"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/service-profiles", "POST", req, &resp)
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/service-profiles", "POST", req, &resp)
 		if err != nil {
 			return err
 		}
 
-		loraserver.ServiceProfileID = resp.ID
+		lorawan_server.ServiceProfileID = resp.ID
 	}
 	return nil
 }
 
-func (loraserver *loraserver) initApplication() error {
-	if loraserver.AppID == "" {
+//gets applicationid if there is a application name in the server, else creates one and adds it to the server
+func (lorawan_server *lorawan_server) initApplication() error {
+	if lorawan_server.AppID == "" {
 		// Check if already exist
 		type Application struct {
 			ID   string `json:"id"`
@@ -336,19 +360,20 @@ func (loraserver *loraserver) initApplication() error {
 			Result []Application `json:"result"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/applications?limit=100", "GET", nil, &respExist)
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/applications?limit=100", "GET", nil, &respExist)
 		if err != nil {
 			return err
 		}
+
 		for _, app := range respExist.Result {
-			if app.Name == loraserverApplicationName {
-				loraserver.AppID = app.ID
+			if app.Name == lorawan_serverApplicationName {
+				lorawan_server.AppID = app.ID
 				break
 			}
 		}
 
 		// Create Application
-		if loraserver.AppID == "" {
+		if lorawan_server.AppID == "" {
 			req := struct {
 				Application struct {
 					Name             string      `json:"name"`
@@ -363,10 +388,10 @@ func (loraserver *loraserver) initApplication() error {
 					OrganizationID   string      `json:"organizationID"`
 					ServiceProfileID interface{} `json:"serviceProfileID"`
 				}{
-					Name:             loraserverApplicationName,
+					Name:             lorawan_serverApplicationName,
 					Description:      "Lorhammer",
-					OrganizationID:   loraserver.OrganizationID,
-					ServiceProfileID: loraserver.ServiceProfileID,
+					OrganizationID:   lorawan_server.OrganizationID,
+					ServiceProfileID: lorawan_server.ServiceProfileID,
 				},
 			}
 
@@ -374,19 +399,20 @@ func (loraserver *loraserver) initApplication() error {
 				ID string `json:"id"`
 			}{}
 
-			err := loraserver.doRequest(loraserver.APIURL+"/api/applications", "POST", req, &resp)
+			err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/applications", "POST", req, &resp)
 			if err != nil {
 				return err
 			}
 
-			loraserver.AppID = resp.ID
+			lorawan_server.AppID = resp.ID
 		}
 	}
 	return nil
 }
 
-func (loraserver *loraserver) initDeviceProfile() error {
-	if loraserver.DeviceProfileID == "" {
+//device level specifications and returns the device profile id afer creating a device profile
+func (lorawan_server *lorawan_server) initDeviceProfile() error {
+	if lorawan_server.DeviceProfileID == "" {
 		req := struct {
 			DeviceProfile struct {
 				Name            string `json:"name"`
@@ -423,8 +449,8 @@ func (loraserver *loraserver) initDeviceProfile() error {
 				RxDelay1        int    `json:"rxDelay1"`
 			}{
 				Name:            "LorhammerDeviceProfile",
-				OrganizationID:  loraserver.OrganizationID,
-				NetworkServerID: loraserver.NetworkServerID,
+				OrganizationID:  lorawan_server.OrganizationID,
+				NetworkServerID: lorawan_server.NetworkServerID,
 				RxDROffset1:     0,
 				RxDataRate2:     0,
 				RxDelay1:        0,
@@ -435,17 +461,17 @@ func (loraserver *loraserver) initDeviceProfile() error {
 			ID string `json:"id"`
 		}{}
 
-		err := loraserver.doRequest(loraserver.APIURL+"/api/device-profiles", "POST", req, &resp)
+		err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/device-profiles", "POST", req, &resp)
 		if err != nil {
 			return err
 		}
 
-		loraserver.DeviceProfileID = resp.ID
+		lorawan_server.DeviceProfileID = resp.ID
 	}
 	return nil
 }
 
-func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, poison chan bool, errorChan chan error, sensorFinishChan chan *model.Node) {
+func (lorawan_server *lorawan_server) provisionSensorAsync(sensorChan chan *model.Node, poison chan bool, errorChan chan error, sensorFinishChan chan *model.Node) {
 	exit := false
 	for {
 		select {
@@ -469,8 +495,8 @@ func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, 
 					}{
 						Name:            "STRESSNODE_" + sensor.DevEUI.String(),
 						Description:     sensor.Description,
-						ApplicationID:   loraserver.AppID,
-						DeviceProfileID: loraserver.DeviceProfileID,
+						ApplicationID:   lorawan_server.AppID,
+						DeviceProfileID: lorawan_server.DeviceProfileID,
 						DevEUI:          sensor.DevEUI.String(),
 					},
 				}
@@ -478,9 +504,10 @@ func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, 
 					req.Device.Description = req.Device.Name
 				}
 
-				err := loraserver.doRequest(loraserver.APIURL+"/api/devices", "POST", req, nil)
+         //registering the devices
+				err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/devices", "POST", req, nil)
 				if err != nil {
-					logLoraserver.WithField("req", req).WithError(err).Error("Can't register device")
+					logLorawan_server.WithField("req", req).WithError(err).Error("Can't register device")
 					errorChan <- err
 					break
 				}
@@ -503,14 +530,16 @@ func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, 
 					},
 				}
 
-				err = loraserver.doRequest(loraserver.APIURL+"/api/devices/"+sensor.DevEUI.String()+"/keys", "POST", reqKeys, nil)
+        //registering the device keys
+				err = lorawan_server.doRequest(lorawan_server.APIURL+"/api/devices/"+sensor.DevEUI.String()+"/keys", "POST", reqKeys, nil)
 				if err != nil {
-					logLoraserver.WithField("reqKeys", reqKeys).WithError(err).Error("Can't register keys device")
+					logLorawan_server.WithField("reqKeys", reqKeys).WithError(err).Error("Can't register keys device")
 					errorChan <- err
 					break
 				}
 
-				if loraserver.Abp {
+        //abp activation
+				if lorawan_server.Abp {
 					req := struct {
 						DeviceActivation struct {
 							AppSKeystring string `json:"appSKey"`
@@ -549,10 +578,10 @@ func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, 
 							SkipFCntCheck: false,
 						},
 					}
-					url := loraserver.APIURL + "/api/devices/" + sensor.DevEUI.String() + "/activate"
-					err := loraserver.doRequest(url, "POST", req, nil)
+					url := lorawan_server.APIURL + "/api/devices/" + sensor.DevEUI.String() + "/activate"
+					err := lorawan_server.doRequest(url, "POST", req, nil)
 					if err != nil {
-						logLoraserver.WithError(err).Error("Can't activate abp device")
+						logLorawan_server.WithError(err).Error("Can't activate abp device")
 						errorChan <- err
 						break
 					}
@@ -568,15 +597,16 @@ func (loraserver *loraserver) provisionSensorAsync(sensorChan chan *model.Node, 
 	}
 }
 
-func (loraserver *loraserver) DeProvision() error {
-	if loraserver.DeleteApplication && loraserver.AppID != "" {
-		if err := loraserver.doRequest(loraserver.APIURL+"/api/applications/"+loraserver.AppID, "DELETE", nil, nil); err != nil {
+//to deProvision
+func (lorawan_server *lorawan_server) DeProvision() error {
+	if lorawan_server.DeleteApplication && lorawan_server.AppID != "" {
+		if err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/applications/"+lorawan_server.AppID, "DELETE", nil, nil); err != nil {
 			return err
 		}
 	}
 
-	if loraserver.DeleteOrganization && loraserver.OrganizationID != "" {
-		if err := loraserver.doRequest(loraserver.APIURL+"/api/organizations/"+loraserver.OrganizationID, "DELETE", nil, nil); err != nil {
+	if lorawan_server.DeleteOrganization && lorawan_server.OrganizationID != "" {
+		if err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/organizations/"+lorawan_server.OrganizationID, "DELETE", nil, nil); err != nil {
 			return err
 		}
 	}
@@ -584,42 +614,46 @@ func (loraserver *loraserver) DeProvision() error {
 	return nil
 }
 
-func (loraserver *loraserver) doRequest(url string, method string, bodyRequest interface{}, bodyResult interface{}) error {
-	logLoraserver.WithField("url", url).Debug("Will call")
-	ctx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Second)
+//to have a http-request and returning the response
+func (lorawan_server *lorawan_server) doRequest(url string, method string, bodyRequest interface{}, bodyResult interface{}) error {
+	logLorawan_server.WithField("url", url).Debug("Will call") //logrus debugger
+	ctx, cancelCtx := context.WithTimeout(context.Background(), 5*time.Second) //context is like a deadline
 	defer cancelCtx()
 
-	marshalledBodyRequest, err := json.Marshal(bodyRequest)
+	marshalledBodyRequest, err := json.Marshal(bodyRequest)  //converting req to json for Api server communication
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(marshalledBodyRequest))
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(marshalledBodyRequest)) //creates a request compatible with client.Do
 	if err != nil {
 		return err
 	}
 
-	if loraserver.jwtToKen != "" {
-		req.Header.Set("Grpc-Metadata-Authorization", loraserver.jwtToKen)
+ //setting the header and attaching a context to the request for timeout
+	if lorawan_server.jwtToKen != "" {
+		req.Header.Set("Grpc-Metadata-Authorization", lorawan_server.jwtToKen)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Close = true
 	req.WithContext(ctx)
 
-	resp, err := loraserver.httpClient.Do(req)
+//Requesting the server and getting the responses
+	resp, err := lorawan_server.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
+//reading the body of the response
 	body, _ := ioutil.ReadAll(resp.Body)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		logLoraserver.WithField("url", url).Debug("Call succeeded")
+		logLorawan_server.WithField("url", url).Debug("Call succeeded")
 
 	default:
-		logLoraserver.WithFields(logrus.Fields{
+		logLorawan_server.WithFields(logrus.Fields{
 			"respStatus":   resp.StatusCode,
 			"responseBody": string(body),
 			"requestBody":  string(marshalledBodyRequest),
@@ -628,6 +662,7 @@ func (loraserver *loraserver) doRequest(url string, method string, bodyRequest i
 		return errors.New("Couldn't proceed with request")
 	}
 
+  //umarshalling the data from body and storing it in bodyResult and returning it
 	if body != nil && bodyResult != nil {
 		return json.Unmarshal(body, bodyResult)
 	}

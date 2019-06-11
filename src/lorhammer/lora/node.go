@@ -5,7 +5,6 @@ import (
 	"errors"
 	"lorhammer/src/model"
 	"lorhammer/src/tools"
-
 	"github.com/brocaar/lorawan"
 	"github.com/sirupsen/logrus"
 )
@@ -37,6 +36,7 @@ func newNode(nwsKeyStr string, appsKeyStr string, description string, payloads [
 		NextPayload:    0,
 		RandomPayloads: randomPayloads,
 		Description:    description,
+		DevNonce:				tools.Random2Bytes(),
 	}
 }
 
@@ -51,11 +51,13 @@ func getJoinRequestDataPayload(node *model.Node) []byte {
 		MACPayload: &lorawan.JoinRequestPayload{
 			AppEUI:   node.AppEUI,
 			DevEUI:   node.DevEUI,
-			DevNonce: tools.Random2Bytes(),
+			DevAddr:  node.DevAddr,
+			DevNonce: node.DevNonce,
 		},
 	}
 
 	err := phyPayload.SetMIC(node.AppKey)
+
 	if err != nil {
 		loggerNode.WithFields(logrus.Fields{
 			"ref": "lorhammer/lora/payloadFactory:NewJoinRequestPHYPayload()",
@@ -71,17 +73,16 @@ func getJoinRequestDataPayload(node *model.Node) []byte {
 	return b
 }
 
-// GetPushDataPayload return the nextbyte arraypush data
 func GetPushDataPayload(node *model.Node, fcnt uint32) ([]byte, int64, error) {
-	fport := uint8(1)
+	fport := uint8(2)
 
 	var frmPayloadByteArray []byte
 	var date int64
+
 	if len(node.Payloads) == 0 {
 		loggerNode.WithFields(logrus.Fields{
 			"DevEui": node.DevEUI.String(),
 		}).Warn("empty payload array given. So it send `LorHammer`")
-		frmPayloadByteArray, _ = hex.DecodeString("LorHammer")
 	} else {
 		var i int
 		if node.RandomPayloads == true {
@@ -100,8 +101,6 @@ func GetPushDataPayload(node *model.Node, fcnt uint32) ([]byte, int64, error) {
 				}).Info("Complete lap executed")
 				node.NextPayload = 0
 			}
-			// only extract timestamp when payloads are consumed in declaration order and not randomly,
-			// keep the "0" default value instead
 			date = node.Payloads[i].Date
 		}
 		loggerNode.WithFields(logrus.Fields{
@@ -112,6 +111,7 @@ func GetPushDataPayload(node *model.Node, fcnt uint32) ([]byte, int64, error) {
 			"Payload : ":         node.Payloads[i].Value,
 			"Date : ":            node.Payloads[i].Date,
 		}).Debug("Payload sent")
+
 		frmPayloadByteArray, _ = hex.DecodeString(node.Payloads[i].Value)
 	}
 
@@ -132,15 +132,22 @@ func GetPushDataPayload(node *model.Node, fcnt uint32) ([]byte, int64, error) {
 				FCnt: fcnt,
 			},
 			FPort:      &fport,
-			FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: frmPayloadByteArray}},
+		  FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: frmPayloadByteArray}},
 		},
 	}
 
-	err := phyPayload.SetMIC(node.NwSKey)
-
+	err := phyPayload.EncryptFRMPayload(node.AppSKey)
 	if err != nil {
 		loggerNode.WithFields(logrus.Fields{
-			"ref": "lorhammer/lora/payloadFactory:NewJoinRequestPHYPayload()",
+			"ref": "lorhammer/lora/payloadFactory:GetPushDataPayload()",
+			"err": err,
+		}).Fatal("Could not encrypt FRMPayload")
+	}
+
+	err = phyPayload.SetMIC(node.NwSKey)
+	if err != nil {
+		loggerNode.WithFields(logrus.Fields{
+			"ref": "lorhammer/lora/payloadFactory:GetPushDataPayload()",
 			"err": err,
 		}).Fatal("Could not calculate MIC")
 	}

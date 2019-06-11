@@ -27,6 +27,7 @@ var instances = sync.Map{}
 func init() {
 	provisioners[noneType] = newNone
 	provisioners[loraserverType] = newLoraserver
+	provisioners[lorawan_serverType] = newLorawan_server//changes
 	provisioners[httpType] = newHTTPProvisioner
 }
 
@@ -42,9 +43,9 @@ func Provision(uuid string, provisioning Model, sensorsToRegister model.Register
 			}
 			instances.Store(uuid, instance)
 		}
-		return instance.(provisioner).Provision(sensorsToRegister)
+		return instance.(provisioner).Provision(sensorsToRegister)//calls the none/loraserver/lorawan_server as per the Type
 	}
-	return err
+	return err //meaning of uuid?
 }
 
 //DeProvision delete all references of a previous Provision()

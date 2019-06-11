@@ -25,6 +25,7 @@ type Node struct {
 	AppKey            lorawan.AES128Key
 	AppSKey           lorawan.AES128Key
 	NwSKey            lorawan.AES128Key
+	DevNonce					lorawan.DevNonce
 	JoinedNetwork     bool
 	Payloads          []Payload
 	NextPayload       int

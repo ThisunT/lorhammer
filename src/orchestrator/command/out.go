@@ -4,7 +4,10 @@ import (
 	"lorhammer/src/model"
 	"lorhammer/src/tools"
 	"sync"
-
+	"fmt"
+  "os"
+  "os/user"
+  "log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -65,5 +68,33 @@ func ShutdownLorhammers(mqttClient tools.Mqtt) {
 		loggerOut.WithError(err).Error("Couldn't publish shutdown command")
 	} else {
 		loggerOut.WithField("toTopic", tools.MqttLorhammerTopic).Info("Send shutdown message")
+		writeToExternalFile()
 	}
+}
+
+// write to external file
+func writeToExternalFile() { 
+
+		usr, err := user.Current()
+    if err != nil {
+        log.Fatal( err )
+    }   
+    
+    f, err := os.Create(usr.HomeDir+"/Desktop/status.txt")
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    l, err := f.WriteString("stopped")
+    if err != nil {
+        fmt.Println(err)
+        f.Close()
+        return
+    }
+    fmt.Println("status.txt changed, ", l)
+    err = f.Close()
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
 }
