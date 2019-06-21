@@ -159,6 +159,49 @@ func GetPushDataPayload(node *model.Node, fcnt uint32) ([]byte, int64, error) {
 	return b, date, nil
 }
 
+func getMACCmdDataPayload(node *model.Node) []byte {
+
+	phyPayload := lorawan.PHYPayload{
+		MHDR: lorawan.MHDR{
+			MType: lorawan.UnconfirmedDataDown,
+			Major: lorawan.LoRaWANR1,
+		},
+
+		MACPayload: &lorawan.MACPayload{
+			FHDR: lorawan.FHDR{
+				DevAddr: node.DevAddr,
+				FCnt:    5,
+				FCtrl: lorawan.FCtrl{
+					ADR: true,
+				},
+				FOpts: []lorawan.MACCommand{
+					{
+						CID: lorawan.LinkADRReq,
+						Payload: &lorawan.LinkADRReqPayload{
+							TXPower: 0,
+							ChMask:  lorawan.ChMask{true, true, true},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := phyPayload.SetMIC(node.NwSKey)
+	if err != nil {
+		loggerNode.WithFields(logrus.Fields{
+			"ref": "lorhammer/lora/payloadFactory:GetPushDataPayload()",
+			"err": err,
+		}).Fatal("Could not calculate MIC")
+	}
+
+	b, err := phyPayload.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 func getDevAddrFromDevEUI(devEUI lorawan.EUI64) lorawan.DevAddr {
 	devAddr := lorawan.DevAddr{}
 	devEuiStr := devEUI.String()

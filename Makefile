@@ -52,6 +52,7 @@ cover: vendor ## Display test coverage percent
 .PHONY: build
 build: vendor ## Build lorhammer and orchestrator binaries
 	rm -rf build
+	cp -ar $(GOPATH)/src/lorhammer/copy_modifications/lora-gateway-bridge $(GOPATH)/src/lorhammer/vendor/github.com/brocaar
 	go build -race -ldflags "-extldflags '-static' -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE_BUILD}" -o "build/lorhammer" src/lorhammer/main.go
 	go build -race -ldflags "-extldflags '-static' -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE_BUILD}" -o "build/orchestrator" src/orchestrator/main.go
 

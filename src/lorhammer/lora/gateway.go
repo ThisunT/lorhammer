@@ -16,6 +16,8 @@ import (
 
 var loggerGateway = logrus.WithField("logger", "lorhammer/lora/gateway")
 var incomingJoinResponses bool = false
+var macCommandResponses bool = false
+var sendMACCommands bool = true
 var nodeCount = 0
 
 //LorhammerGateway : internal gateway for pointer receiver usage
@@ -89,6 +91,17 @@ func (gateway *LorhammerGateway) Start(prometheus metrics.Prometheus, fcnt uint3
 	endPullRespTimer := prometheus.StartPullRespTimer()
 
 	gateway.sendPullData(conn)
+
+	// if(sendMACCommands){
+	// 	gateway.sendMACCommands(conn, prometheus, true, endPushAckTimer, endPullRespTimer)
+	// 	sendMACCommands = false
+	// }
+	//
+	// conn, err = net.Dial("udp", gateway.NsAddress)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer conn.Close()
 
 	//Send pushDataPackets
 	gateway.sendPushPackets(conn, fcnt)
@@ -187,6 +200,39 @@ func (gateway *LorhammerGateway) sendPushPackets(conn net.Conn, fcnt uint32) {
 	}
 }
 
+func (gateway *LorhammerGateway) sendMACCommands(conn net.Conn, prometheus metrics.Prometheus, withJoin bool, endPushAckTimer func(), endPullRespTimer func()) {
+	for _, node := range gateway.Nodes {
+		if !node.JoinedNetwork {
+			packet, err := packet{
+				Rxpk: []loraserver_structs.RXPK{
+					newRxpk(getMACCmdDataPayload(node), 0, gateway),
+				},
+			}.prepare(gateway)
+
+			if err != nil {
+				loggerGateway.WithError(err).Error("Can't prepare lora packet in SendJoinRequest")
+			}
+			if _, err = conn.Write(packet); err != nil {
+				loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
+			}
+
+			macCommandResponses = true
+
+			threadListenUDP := make(chan []byte, 1)
+			defer close(threadListenUDP)
+			next := make(chan bool, 1)
+			defer close(next)
+			poison := make(chan bool, 1)
+			defer close(poison)
+
+			go gateway.readPackets(conn, poison, next, threadListenUDP)
+			gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
+
+			macCommandResponses = false
+		}
+	}
+}
+
 func (gateway *LorhammerGateway) readPackets(conn net.Conn, poison chan bool, next chan bool, threadListenUDP chan []byte) {
 	for {
 		quit := false
@@ -270,7 +316,10 @@ func (gateway *LorhammerGateway) readLoraPackets(conn net.Conn, poison chan bool
 				break
 			case res := <-threadListenUDP:
 				resp, err := handlePacket(res)
-				if (resp && incomingJoinResponses){ //To make sure its a response and a response for a join request
+				if (macCommandResponses){
+					fmt.Println("mac response: ",res)
+				}
+				if (resp && incomingJoinResponses){ //Ensure its a response and a response for a join request
 
 					var pullRespPacket loraserver_structs.PullRespPacket
 					err := pullRespPacket.UnmarshalBinary(res)

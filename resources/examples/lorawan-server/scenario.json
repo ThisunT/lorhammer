@@ -64,7 +64,7 @@
                     3
                 ],
                 "nwskey": "",
-                "payloads": [{"value": "7b202274656d706572617475726522203a2032322c202268756d696469747922203a2035362c2022706d322e3522203a20322c2022706d313022203a203130207d"}],
+                "payloads": [{"value": "d7e6611c4572fc0d331d7d388cace84a"}],
                 "nbGatewayPerLorhammer": 2,
                 "scenarioSleepTime": [
                     "3s",

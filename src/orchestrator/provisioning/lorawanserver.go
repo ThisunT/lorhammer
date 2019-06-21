@@ -369,7 +369,7 @@ func (lorawan_server *lorawan_server) initProfile()error{
               }{
     						Name:lorawan_serverProfileName,
                 Group:lorawan_server.GroupName,
-                Application:"semtech-mote",
+                Application:"	Cs2ClassC",
     						Join:1,
                 FCnt_Check:2,
                 TX_Window:0,
@@ -487,7 +487,7 @@ func (lorawan_server *lorawan_server) provisionSensorAsync(sensorChan chan *mode
 						AppKey: sensor.AppKey.String(),
 						NwkKey: sensor.AppKey.String(),
 					}
-					
+
 					err := lorawan_server.doRequest(lorawan_server.APIURL+"/api/devices", "POST", req, nil)
 					if err != nil {
 						for true{

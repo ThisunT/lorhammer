@@ -6,7 +6,6 @@ import (
 	"lorhammer/src/tools"
 	"time"
 	"context"
-
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"lorhammer/src/lorhammer/metrics"
@@ -127,6 +126,7 @@ func (p *Scenario) start(prometheus metrics.Prometheus, cancelFunction context.C
 	for _, gateway := range p.Gateways {
 		time.Sleep(tools.RandomDuration(p.GatewaySleepTime[0], p.GatewaySleepTime[1]))
 		go gateway.Start(prometheus, p.MessageFcnt)
+		// fmt.Println(gateway)
 		//p.MessageFcnt++
 	}
 }
