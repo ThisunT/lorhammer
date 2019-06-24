@@ -51,7 +51,6 @@ func getJoinRequestDataPayload(node *model.Node) []byte {
 		MACPayload: &lorawan.JoinRequestPayload{
 			AppEUI:   node.AppEUI,
 			DevEUI:   node.DevEUI,
-			DevAddr:  node.DevAddr,
 			DevNonce: node.DevNonce,
 		},
 	}
