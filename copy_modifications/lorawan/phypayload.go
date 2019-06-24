@@ -598,3 +598,31 @@ func EncryptFRMPayload(key AES128Key, uplink bool, devAddr DevAddr, fCnt uint32,
 
 	return data[0:pLen], nil
 }
+
+func reverse(in []byte) []byte {
+	l := len(in)
+	out := make([]byte, l)
+	for i := 0; i < l; i++ {
+		out[l-i-1] = in[i]
+	}
+	return out
+}
+
+func DeriveAppSKey(key AES128Key, appNonce AppNonce, nid NetID, devNonce DevNonce) AES128Key {
+	return deriveSKey(key, 0x02, appNonce, nid, devNonce)
+}
+
+func DeriveNwkSKey(appKey AES128Key, appNonce AppNonce, nid NetID, devNonce DevNonce) AES128Key {
+	return deriveSKey(appKey, 0x01, appNonce, nid, devNonce)
+}
+
+func deriveSKey(key AES128Key, t byte, appNonce AppNonce, nid NetID, devNonce DevNonce) (derived AES128Key) {
+	buf := make([]byte, 16)
+	buf[0] = t
+	copy(buf[1:4], reverse(appNonce[:]))
+	copy(buf[4:7], reverse(nid[:]))
+	copy(buf[7:9], reverse(devNonce[:]))
+	block, _ := aes.NewCipher(key[:])
+	block.Encrypt(derived[:], buf)
+	return
+}
