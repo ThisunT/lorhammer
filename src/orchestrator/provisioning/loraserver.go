@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+	"fmt"
+	"github.com/brocaar/lorawan"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +26,7 @@ const (
 	httpLoraserverTimeout      = 1 * time.Minute
 )
 
-type httpClientSender interface {     
+type httpClientSender interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
@@ -111,6 +113,9 @@ func (loraserver *loraserver) Provision(sensorsToRegister model.Register) error 
 
 	nbNodeToProvision := 0
 	for _, gateway := range sensorsToRegister.Gateways {
+		if err:=loraserver.initGateway(gateway.MacAddress);err!=nil{
+			return err
+		}
 		for range gateway.Nodes {
 			nbNodeToProvision++
 		}
@@ -441,6 +446,57 @@ func (loraserver *loraserver) initDeviceProfile() error {
 		}
 
 		loraserver.DeviceProfileID = resp.ID
+	}
+	return nil
+}
+
+func (loraserver *loraserver) initGateway(macAddress lorawan.EUI64)error{
+	type Gatewayy struct{
+		MAC string `json:"mac"`
+	}
+
+	type Location struct{
+		Latitude int `json:latitude`
+		Longitude int `json:longitude`
+	}
+
+	req:= struct {
+		Gateway struct {
+			Description string `json:"description"`
+			DiscoveryEnabled bool `json:"discoveryEnabled"`
+			GatewayProfileID string `json:"gatewayProfileID"`
+			ID string `json:"id"`
+			Location `json:"location"`
+		} `json:"gateway"`
+	}{
+		Gateway: struct {
+			Description string `json:"description"`
+			DiscoveryEnabled bool `json:"discoveryEnabled"`
+			GatewayProfileID string `json:"gatewayProfileID"`
+			ID string `json:"id"`
+			Location `json:"location"`
+		}{
+			Description:"lorhammer Gateway",
+			DiscoveryEnabled: true,
+			GatewayProfileID: macAddress.String(),
+			ID: macAddress.String(),
+			Location: Location{0,0},
+		},
+	}
+
+	var resp  []Gatewayy
+	fmt.Println("Gateway Req%v",req)
+	err := loraserver.doRequest(loraserver.APIURL+"/api/gateways", "POST", req , &resp)
+	if err != nil {
+		for true{
+			err := loraserver.doRequest(loraserver.APIURL+"/api/gateways", "POST", req , &resp)
+			if err==nil{
+				break
+			}
+		}
+	}
+	if resp==nil{
+		fmt.Println("Gateway created successfully")
 	}
 	return nil
 }
