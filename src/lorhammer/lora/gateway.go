@@ -12,6 +12,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"lorhammer/src/lorhammer/metrics"
 	"encoding/base64"
+	"os"
+	"os/user"
+  "io/ioutil"
+	"strconv"
+	"strings"
 )
 
 var loggerGateway = logrus.WithField("logger", "lorhammer/lora/gateway")
@@ -92,30 +97,43 @@ func (gateway *LorhammerGateway) Start(prometheus metrics.Prometheus, fcnt uint3
 
 	gateway.sendPullData(conn)
 
-	// if(sendMACCommands){
-	// 	gateway.sendMACCommands(conn, prometheus, true, endPushAckTimer, endPullRespTimer)
-	// 	sendMACCommands = false
-	// }
-	//
-	// conn, err = net.Dial("udp", gateway.NsAddress)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer conn.Close()
+	myself, error := user.Current()
+	if error != nil {
+		panic(error)
+	}
+	homedir := myself.HomeDir
+	desktop := homedir+"/Desktop/"
+	file := desktop + "tmp.txt"
 
-	//Send pushDataPackets
-	gateway.sendPushPackets(conn, fcnt)
+	dat, err := ioutil.ReadFile(file)
 
-	//READ
-	threadListenUDP := make(chan []byte, 1)
-	defer close(threadListenUDP)
-	next := make(chan bool, 1)
-	defer close(next)
-	poison := make(chan bool, 1)
-	defer close(poison)
+	if len(dat) > 0 {
+		//Send mac commands
+		if(sendMACCommands){
+			gateway.sendMACCommands(string(dat[0]), conn, prometheus, true, endPushAckTimer, endPullRespTimer)
+			sendMACCommands = false
+		}
 
-	go gateway.readPackets(conn, poison, next, threadListenUDP)
-	gateway.readLoraPushPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus)
+		conn, err = net.Dial("udp", gateway.NsAddress)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+	}else{
+		//Send pushDataPackets
+		gateway.sendPushPackets(conn, fcnt)
+
+		//READ
+		threadListenUDP := make(chan []byte, 1)
+		defer close(threadListenUDP)
+		next := make(chan bool, 1)
+		defer close(next)
+		poison := make(chan bool, 1)
+		defer close(poison)
+
+		go gateway.readPackets(conn, poison, next, threadListenUDP)
+		gateway.readLoraPushPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus)
+	}
 	return nil
 }
 
@@ -200,35 +218,69 @@ func (gateway *LorhammerGateway) sendPushPackets(conn net.Conn, fcnt uint32) {
 	}
 }
 
-func (gateway *LorhammerGateway) sendMACCommands(conn net.Conn, prometheus metrics.Prometheus, withJoin bool, endPushAckTimer func(), endPullRespTimer func()) {
+func (gateway *LorhammerGateway) sendMACCommands(commandID string, conn net.Conn, prometheus metrics.Prometheus, withJoin bool, endPushAckTimer func(), endPullRespTimer func()) {
 	for _, node := range gateway.Nodes {
 		if !node.JoinedNetwork {
-			packet, err := packet{
-				Rxpk: []loraserver_structs.RXPK{
-					newRxpk(getMACCmdDataPayload(node), 0, gateway),
-				},
-			}.prepare(gateway)
+			switch commandID {
+			case "1":
+				packet, err := packet{
+					Rxpk: []loraserver_structs.RXPK{
+						newRxpk(getMACCmdLinkCheckReqDataPayload(node), 0, gateway),
+					},
+				}.prepare(gateway)
 
-			if err != nil {
-				loggerGateway.WithError(err).Error("Can't prepare lora packet in SendJoinRequest")
+				if err != nil {
+					loggerGateway.WithError(err).Error("Can't prepare lora packet in SendJoinRequest")
+				}
+				if _, err = conn.Write(packet); err != nil {
+					loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
+				}
+
+				macCommandResponses = true
+
+				threadListenUDP := make(chan []byte, 1)
+				defer close(threadListenUDP)
+				next := make(chan bool, 1)
+				defer close(next)
+				poison := make(chan bool, 1)
+				defer close(poison)
+
+				go gateway.readPackets(conn, poison, next, threadListenUDP)
+				gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
+
+				macCommandResponses = false
+
+			case "2":
+				packet, err := packet{
+					Rxpk: []loraserver_structs.RXPK{
+						newRxpk(getMACCmdLinkADRReqDataPayload(node), 0, gateway),
+					},
+				}.prepare(gateway)
+
+				if err != nil {
+					loggerGateway.WithError(err).Error("Can't prepare lora packet in SendJoinRequest")
+				}
+				if _, err = conn.Write(packet); err != nil {
+					loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
+				}
+
+				macCommandResponses = true
+
+				threadListenUDP := make(chan []byte, 1)
+				defer close(threadListenUDP)
+				next := make(chan bool, 1)
+				defer close(next)
+				poison := make(chan bool, 1)
+				defer close(poison)
+
+				go gateway.readPackets(conn, poison, next, threadListenUDP)
+				gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
+
+				macCommandResponses = false
+
+    	case "3":
+        fmt.Println("three")
 			}
-			if _, err = conn.Write(packet); err != nil {
-				loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
-			}
-
-			macCommandResponses = true
-
-			threadListenUDP := make(chan []byte, 1)
-			defer close(threadListenUDP)
-			next := make(chan bool, 1)
-			defer close(next)
-			poison := make(chan bool, 1)
-			defer close(poison)
-
-			go gateway.readPackets(conn, poison, next, threadListenUDP)
-			gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
-
-			macCommandResponses = false
 		}
 	}
 }
@@ -317,7 +369,27 @@ func (gateway *LorhammerGateway) readLoraPackets(conn net.Conn, poison chan bool
 			case res := <-threadListenUDP:
 				resp, err := handlePacket(res)
 				if (macCommandResponses){
-					fmt.Println("mac response: ",res)
+
+					myself, error := user.Current()
+					if error != nil {
+						panic(error)
+    			}
+    			homedir := myself.HomeDir
+    			desktop := homedir+"/Desktop/"
+					file := desktop+"response.txt"
+					f, err := os.Create(file)
+					if err != nil {
+						panic(err)
+    			}
+
+					var s []string
+			    for _, i := range res {
+			        s = append(s, strconv.Itoa(int(i)))
+			    }
+			    str := fmt.Sprintf(strings.Join(s, " "))
+
+					f.WriteString(str)
+    			fmt.Println("Wrote to file")
 				}
 				if (resp && incomingJoinResponses){ //Ensure its a response and a response for a join request
 

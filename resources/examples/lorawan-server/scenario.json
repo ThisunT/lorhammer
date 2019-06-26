@@ -1,14 +1,53 @@
 [
     {
+        "stopAllLorhammerTime": "4m",
+        "test": {
+            "type": "oneShot",
+            "repeatTime": "0"
+        },
+        "init": [
+            {
+                "nwskey": "",
+                "withJoin": true,
+                "nbNodePerGateway": [
+                    2,
+                    2
+                ],
+                "gatewaySleepTime": [
+                    "100ms",
+                    "500ms"
+                ],
+                "nsAddress": "127.0.0.1:1680",
+                "randomPayloads": false,
+                "nbGatewayPerLorhammer": 1,
+                "appskey": "",
+                "nbScenarioReplayLaps": 0,
+                "scenarioSleepTime": [
+                    "4s",
+                    "4s"
+                ],
+                "receiveTimeoutTime": "4s",
+                "payloads": [
+                    {
+                        "value": "d7e6611c4572fc0d331d7d388cace84a"
+                    }
+                ]
+            }
+        ],
+        "shutdownAllLorhammerTime": "4m",
+        "maxWaitLorhammerTime": "10s",
+        "sleepAtEndTime": "0",
+        "sleepBeforeCheckTime": "0",
+        "requieredLorhammer": 1,
         "provisioning": {
             "config": {
-                "password": "admin",
-                "deleteApplication": false,
-                "networkServerAddr": "http://127.0.0.1:1680",
-                "apiUrl": "http://127.0.0.1:8080",
-                "nbProvisionerParallel": 10,
                 "abp": false,
+                "nbProvisionerParallel": 10,
+                "apiUrl": "http://127.0.0.1:8080",
+                "deleteApplication": false,
                 "login": "admin",
+                "networkServerAddr": "http://127.0.0.1:1680",
+                "password": "admin",
                 "deleteOrganization": false
             },
             "type": "lorawan_server"
@@ -16,66 +55,31 @@
         "deploy": {
             "type": "none"
         },
-        "maxWaitLorhammerTime": "10s",
-        "sleepAtEndTime": "0",
-        "requieredLorhammer": 1,
-        "test": {
-            "repeatTime": "0",
-            "type": "oneShot"
-        },
-        "sleepBeforeCheckTime": "0",
-        "stopAllLorhammerTime": "3m",
         "check": {
             "config": {
                 "address": "http://127.0.0.1:9090",
                 "checks": [
                     {
-                        "resultMin": 1,
                         "resultMax": 1,
-                        "description": "nb lorhammer",
-                        "query": "count(lorhammer_durations_count)"
+                        "query": "count(lorhammer_durations_count)",
+                        "resultMin": 1,
+                        "description": "nb lorhammer"
                     },
                     {
-                        "resultMin": 1,
                         "resultMax": 1,
-                        "description": "nb gateways",
-                        "query": "sum(lorhammer_gateway)"
+                        "query": "sum(lorhammer_gateway)",
+                        "resultMin": 1,
+                        "description": "nb gateways"
                     },
                     {
-                        "resultMin": 5,
                         "resultMax": 5,
-                        "description": "nb nodes",
-                        "query": "sum(lorhammer_node)"
+                        "query": "sum(lorhammer_node)",
+                        "resultMin": 5,
+                        "description": "nb nodes"
                     }
                 ]
             },
             "type": "prometheus"
-        },
-        "shutdownAllLorhammerTime": "3m",
-        "init": [
-            {
-                "withJoin": true,
-                "gatewaySleepTime": [
-                    "100ms",
-                    "500ms"
-                ],
-                "nbNodePerGateway": [
-                    3,
-                    3
-                ],
-                "nwskey": "",
-                "payloads": [{"value": "d7e6611c4572fc0d331d7d388cace84a"}],
-                "nbGatewayPerLorhammer": 2,
-                "scenarioSleepTime": [
-                    "3s",
-                    "3s"
-                ],
-                "receiveTimeoutTime": "4s",
-                "randomPayloads": false,
-                "appskey": "",
-                "nsAddress": "127.0.0.1:1680",
-                "nbScenarioReplayLaps": 0
-            }
-        ]
+        }
     }
 ]
