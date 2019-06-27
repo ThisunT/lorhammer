@@ -7,8 +7,8 @@
         },
         "init": [
             {
-                "nwskey": "",
-                "withJoin": true,
+                "nwskey": "d7e6611c4572fc0d331d7d388cace84a",
+                "withJoin": false,
                 "nbNodePerGateway": [
                     2,
                     2
@@ -20,7 +20,7 @@
                 "nsAddress": "127.0.0.1:1680",
                 "randomPayloads": false,
                 "nbGatewayPerLorhammer": 1,
-                "appskey": "",
+                "appskey": "93a4841d7203287d0929ad56bde3d7a8",
                 "nbScenarioReplayLaps": 0,
                 "scenarioSleepTime": [
                     "4s",
@@ -41,7 +41,7 @@
         "requieredLorhammer": 1,
         "provisioning": {
             "config": {
-                "abp": false,
+                "abp": true,
                 "nbProvisionerParallel": 10,
                 "apiUrl": "http://127.0.0.1:8080",
                 "deleteApplication": false,

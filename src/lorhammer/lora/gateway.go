@@ -34,7 +34,7 @@ type LorhammerGateway struct {
 	PayloadsReplayMaxLaps int
 	AllLapsCompleted      bool
 	ReceiveTimeoutTime    time.Duration
-}
+} 
 
 //NewGateway return a new gateway with node configured
 func NewGateway(nbNode int, init model.Init) *LorhammerGateway {
@@ -279,7 +279,32 @@ func (gateway *LorhammerGateway) sendMACCommands(commandID string, conn net.Conn
 				macCommandResponses = false
 
     	case "3":
-        fmt.Println("three")
+				packet, err := packet{
+					Rxpk: []loraserver_structs.RXPK{
+						newRxpk(getMACCmdDevStatusAnsDataPayload(node), 0, gateway),
+					},
+				}.prepare(gateway)
+
+				if err != nil {
+					loggerGateway.WithError(err).Error("Can't prepare lora packet in SendJoinRequest")
+				}
+				if _, err = conn.Write(packet); err != nil {
+					loggerGateway.WithError(err).Error("Can't write udp in SendJoinRequest")
+				}
+
+				macCommandResponses = true
+
+				threadListenUDP := make(chan []byte, 1)
+				defer close(threadListenUDP)
+				next := make(chan bool, 1)
+				defer close(next)
+				poison := make(chan bool, 1)
+				defer close(poison)
+
+				go gateway.readPackets(conn, poison, next, threadListenUDP)
+				gateway.readLoraJoinPackets(conn, poison, next, threadListenUDP, endPushAckTimer, endPullRespTimer, prometheus, withJoin)
+
+				macCommandResponses = false
 			}
 		}
 	}
@@ -390,6 +415,28 @@ func (gateway *LorhammerGateway) readLoraPackets(conn net.Conn, poison chan bool
 
 					f.WriteString(str)
     			fmt.Println("Wrote to file")
+				}
+				if(resp  && !incomingJoinResponses){
+					for _, node := range gateway.Nodes {
+						var pullRespPacket loraserver_structs.PullRespPacket
+						err := pullRespPacket.UnmarshalBinary(res)
+						if err != nil {
+							loggerGateway.WithError(err).Error("Error phy uuuuunmarshalling")
+						}
+
+						payloadBytes, err := base64.StdEncoding.DecodeString(pullRespPacket.Payload.TXPK.Data)
+
+						phyPayload := lorawan.PHYPayload{MACPayload: &lorawan.MACPayload{}}
+
+						err = phyPayload.UnmarshalBinary(payloadBytes)
+						if err != nil {
+							loggerGateway.WithError(err).Error("Error phy payload unmarshalling")
+						}
+
+						phyPayload.DecryptFRMPayload(node.NwSKey)
+
+						fmt.Println(phyPayload.MACPayload)
+					}
 				}
 				if (resp && incomingJoinResponses){ //Ensure its a response and a response for a join request
 

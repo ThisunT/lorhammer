@@ -162,21 +162,16 @@ func getMACCmdLinkCheckReqDataPayload(node *model.Node) []byte {
 
 	phyPayload := lorawan.PHYPayload{
 		MHDR: lorawan.MHDR{
-			MType: lorawan.UnconfirmedDataDown,
+			MType: lorawan.UnconfirmedDataUp,
 			Major: lorawan.LoRaWANR1,
 		},
 
 		MACPayload: &lorawan.MACPayload{
 			FHDR: lorawan.FHDR{
 				DevAddr: node.DevAddr,
-				FCnt:    5,
-				FCtrl: lorawan.FCtrl{
-					ADR: true,
-				},
 				FOpts: []lorawan.MACCommand{
 					{
 						CID: lorawan.LinkCheckReq,
-						Payload: nil,
 					},
 				},
 			},
@@ -186,7 +181,7 @@ func getMACCmdLinkCheckReqDataPayload(node *model.Node) []byte {
 	err := phyPayload.SetMIC(node.NwSKey)
 	if err != nil {
 		loggerNode.WithFields(logrus.Fields{
-			"ref": "lorhammer/lora/payloadFactory:GetPushDataPayload()",
+			"ref": "lorhammer/lora/payloadFactory:getMACCmdLinkCheckReqDataPayload()",
 			"err": err,
 		}).Fatal("Could not calculate MIC")
 	}
@@ -200,12 +195,27 @@ func getMACCmdLinkCheckReqDataPayload(node *model.Node) []byte {
 
 func getMACCmdLinkADRReqDataPayload(node *model.Node) []byte {
 
-	phyPayload := lorawan.PHYPayload{
+	// phyPayload := lorawan.PHYPayload{
+	// 	MHDR: lorawan.MHDR{
+	// 		MType: lorawan.UnconfirmedDataUp,
+	// 		Major: lorawan.LoRaWANR1,
+	// 	},
+	// 	MACPayload: &lorawan.MACPayload{
+	// 		FHDR: lorawan.FHDR{
+	// 			DevAddr: node.DevAddr,
+	// 			FCnt:    10,
+	// 			FOpts: []lorawan.MACCommand{
+	// 				{CID: lorawan.LinkADRAns, Payload: &lorawan.LinkADRAnsPayload{ChannelMaskACK: true, DataRateACK: true, PowerACK: true}},
+	// 			},
+	// 		},
+	// 	},
+	// }
+
+	phyPayload := &lorawan.PHYPayload{
 		MHDR: lorawan.MHDR{
 			MType: lorawan.UnconfirmedDataDown,
 			Major: lorawan.LoRaWANR1,
 		},
-
 		MACPayload: &lorawan.MACPayload{
 			FHDR: lorawan.FHDR{
 				DevAddr: node.DevAddr,
@@ -226,10 +236,82 @@ func getMACCmdLinkADRReqDataPayload(node *model.Node) []byte {
 		},
 	}
 
+	// phyPayload := &lorawan.PHYPayload{
+	// 	MHDR: lorawan.MHDR{
+	// 		MType: lorawan.UnconfirmedDataDown,
+	// 		Major: lorawan.LoRaWANR1,
+	// 	},
+	// 	MACPayload: &lorawan.MACPayload{
+	// 		FHDR: lorawan.FHDR{
+	// 			DevAddr: node.DevAddr,
+	// 			FCnt:    5,
+	// 			FCtrl: lorawan.FCtrl{
+	// 				ADR: true,
+	// 			},
+	// 			FOpts: []lorawan.MACCommand{
+	// 				{
+	// 					CID: lorawan.LinkADRReq,
+	// 					Payload: &lorawan.LinkADRReqPayload{
+	// 						DataRate: 5,
+	// 						TXPower:  2,
+	// 						ChMask:   [16]bool{true, true, true},
+	// 						Redundancy: lorawan.Redundancy{
+	// 							ChMaskCntl: 0,
+	// 							NbRep:      1,
+	// 						},
+	// 					},
+	// 				},
+	// 			},
+	// 		},
+	// 	},
+	// }
+
 	err := phyPayload.SetMIC(node.NwSKey)
 	if err != nil {
 		loggerNode.WithFields(logrus.Fields{
-			"ref": "lorhammer/lora/payloadFactory:GetPushDataPayload()",
+			"ref": "lorhammer/lora/payloadFactory:getMACCmdLinkADRReqDataPayload()",
+			"err": err,
+		}).Fatal("Could not calculate MIC")
+	}
+
+	b, err := phyPayload.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+func getMACCmdDevStatusAnsDataPayload(node *model.Node) []byte {
+		fport := uint8(2)
+
+	phyPayload := lorawan.PHYPayload{
+		MHDR: lorawan.MHDR{
+			MType: lorawan.UnconfirmedDataUp,
+			Major: lorawan.LoRaWANR1,
+		},
+		MACPayload: &lorawan.MACPayload{
+			FHDR: lorawan.FHDR{
+				DevAddr: node.DevAddr,
+				FCnt:    10,
+				FOpts: []lorawan.MACCommand{
+					{
+						CID: lorawan.DevStatusAns,
+						Payload: &lorawan.DevStatusAnsPayload{
+							Battery: 128,
+							Margin:  10,
+						},
+					},
+				},
+			},
+			FPort:      &fport,
+			FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: []byte{1, 2, 3, 4}}},
+		},
+	}
+
+	err := phyPayload.SetMIC(node.NwSKey)
+	if err != nil {
+		loggerNode.WithFields(logrus.Fields{
+			"ref": "lorhammer/lora/payloadFactory:getMACCmdDevStatusReqDataPayload()",
 			"err": err,
 		}).Fatal("Could not calculate MIC")
 	}
